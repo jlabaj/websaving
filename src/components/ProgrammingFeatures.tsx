@@ -9,7 +9,9 @@ import {
   Paper,
   CircularProgress,
   Divider,
-  Button
+  Button,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
@@ -27,6 +29,8 @@ export const ProgrammingFeatures: React.FC = () => {
   const [responses, setResponses] = useState<FeatureResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const languages = [
     { name: 'TypeScript', prompt: 'highly requested TypeScript features under consideration or development' },
@@ -35,30 +39,29 @@ export const ProgrammingFeatures: React.FC = () => {
   ];
 
   useEffect(() => {
-    if (user && selectedLanguage) {
-      console.log('Loading response for language:', selectedLanguage);
+    if (languages.length > 0 && !selectedLanguage) {
+      setSelectedLanguage(languages[0].name);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedLanguage) {
       loadResponse(selectedLanguage);
     }
-  }, [user, selectedLanguage]);
+  }, [selectedLanguage]);
 
   const loadResponse = async (language: string) => {
-    if (!user) return;
-
     try {
       const responsesRef = collection(db, 'programmingResponses');
       const q = query(
         responsesRef,
-        where('userId', '==', user.uid),
         where('language', '==', language)
       );
       const querySnapshot = await getDocs(q);
 
-      console.log('Query snapshot:', querySnapshot.empty ? 'empty' : 'has data');
-
       if (!querySnapshot.empty) {
         const doc = querySnapshot.docs[0];
         const data = doc.data();
-        console.log('Loaded data from Firestore:', data);
         
         setResponses(prev => {
           const newResponses = prev.filter(r => r.language !== language);
@@ -67,11 +70,9 @@ export const ProgrammingFeatures: React.FC = () => {
             response: data.response,
             lastUpdated: data.lastUpdated?.toDate() || new Date()
           };
-          console.log('Setting new response:', updatedResponse);
           return [...newResponses, updatedResponse];
         });
       } else {
-        console.log('No existing response found, fetching new one');
         await fetchResponse(language);
       }
     } catch (error) {
@@ -80,13 +81,11 @@ export const ProgrammingFeatures: React.FC = () => {
   };
 
   const fetchResponse = async (language: string) => {
-    if (!user) return;
     setLoading(true);
     try {
       const prompt = languages.find(lang => lang.name === language)?.prompt;
       if (!prompt) return;
 
-      console.log('Fetching new response for:', language);
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -111,13 +110,11 @@ export const ProgrammingFeatures: React.FC = () => {
 
       const data = await response.json();
       const aiResponse = data.choices[0].message.content;
-      console.log('Received AI response:', aiResponse);
 
       // Save to Firestore
       const responsesRef = collection(db, 'programmingResponses');
       const q = query(
         responsesRef,
-        where('userId', '==', user.uid),
         where('language', '==', language)
       );
       const querySnapshot = await getDocs(q);
@@ -128,15 +125,12 @@ export const ProgrammingFeatures: React.FC = () => {
           response: aiResponse,
           lastUpdated: new Date()
         });
-        console.log('Updated existing document');
       } else {
         await addDoc(responsesRef, {
-          userId: user.uid,
           language,
           response: aiResponse,
           lastUpdated: new Date()
         });
-        console.log('Created new document');
       }
 
       setResponses(prev => {
@@ -146,7 +140,6 @@ export const ProgrammingFeatures: React.FC = () => {
           response: aiResponse,
           lastUpdated: new Date()
         };
-        console.log('Setting new response in state:', updatedResponse);
         return [...newResponses, updatedResponse];
       });
     } catch (error) {
@@ -166,9 +159,115 @@ export const ProgrammingFeatures: React.FC = () => {
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   };
 
+  const isAdminUser = user?.email === 'labaj.jakub@gmail.com';
+
+  const renderFeatureContent = () => (
+    <Box>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between', 
+        alignItems: isMobile ? 'flex-start' : 'center', 
+        mb: 2,
+        gap: isMobile ? 1 : 0
+      }}>
+        <Typography 
+          variant="h5"
+          sx={{
+            fontSize: isMobile ? '1.5rem' : '2rem'
+          }}
+        >
+          {selectedLanguage} Features
+        </Typography>
+        {isAdminUser && (
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={loading}
+            size={isMobile ? 'small' : 'medium'}
+            fullWidth={isMobile}
+          >
+            Refresh
+          </Button>
+        )}
+      </Box>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Box>
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              whiteSpace: 'pre-wrap',
+              fontSize: isMobile ? '0.9rem' : '1rem',
+              '& strong': {
+                color: 'primary.main',
+                fontWeight: 600
+              }
+            }}
+            dangerouslySetInnerHTML={{ 
+              __html: convertMarkdownToHtml(responses.find(r => r.language === selectedLanguage)?.response || 'No response available.')
+            }}
+          />
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ 
+              mt: 2, 
+              display: 'block',
+              fontSize: isMobile ? '0.75rem' : '0.875rem'
+            }}
+          >
+            Last updated: {responses.find(r => r.language === selectedLanguage)?.lastUpdated.toLocaleString() || 'Never'}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+
+  const renderMostRequestedContent = () => (
+    <Box>
+      <Typography 
+        variant="h5"
+        sx={{
+          fontSize: isMobile ? '1.5rem' : '2rem',
+          mb: 2
+        }}
+      >
+        Highly requested features under consideration or development
+      </Typography>
+      <Typography 
+        variant="body1" 
+        sx={{ 
+          whiteSpace: 'pre-wrap',
+          fontSize: isMobile ? '0.9rem' : '1rem',
+          '& strong': {
+            color: 'primary.main',
+            fontWeight: 600
+          }
+        }}
+      >
+        This section will show the most requested features across all programming languages. Coming soon!
+      </Typography>
+    </Box>
+  );
+
   return (
-    <Box sx={{ display: 'flex', gap: 2, height: '100%' }}>
-      <Paper sx={{ width: 240, p: 2 }}>
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: isMobile ? 'column' : 'row',
+      gap: 2, 
+      height: '100%',
+      width: '100%'
+    }}>
+      <Paper sx={{ 
+        width: isMobile ? '100%' : 240, 
+        p: 2,
+        mb: isMobile ? 2 : 0
+      }}>
         <Typography variant="h6" gutterBottom>
           Programming Languages
         </Typography>
@@ -179,8 +278,24 @@ export const ProgrammingFeatures: React.FC = () => {
                 <ListItemButton
                   selected={selectedLanguage === lang.name}
                   onClick={() => setSelectedLanguage(lang.name)}
+                  sx={{
+                    borderRadius: 1,
+                    '&.Mui-selected': {
+                      backgroundColor: theme.palette.primary.main + '20',
+                      '&:hover': {
+                        backgroundColor: theme.palette.primary.main + '30',
+                      },
+                    },
+                  }}
                 >
-                  <ListItemText primary={lang.name} />
+                  <ListItemText 
+                    primary={lang.name}
+                    primaryTypographyProps={{
+                      sx: {
+                        fontSize: isMobile ? '0.9rem' : '1rem'
+                      }
+                    }}
+                  />
                 </ListItemButton>
               </ListItem>
               <Divider />
@@ -189,49 +304,40 @@ export const ProgrammingFeatures: React.FC = () => {
         </List>
       </Paper>
 
-      <Paper sx={{ flex: 1, p: 2 }}>
+      <Paper sx={{ 
+        flex: 1, 
+        p: isMobile ? 1.5 : 2,
+        minHeight: isMobile ? 'auto' : '100%'
+      }}>
         {selectedLanguage ? (
           <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h5">
-                {selectedLanguage} Features
-              </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<RefreshIcon />}
-                onClick={handleRefresh}
-                disabled={loading}
-              >
-                Refresh
-              </Button>
-            </Box>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <Box>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap',
-                    '& strong': {
-                      color: 'primary.main',
-                      fontWeight: 600
-                    }
-                  }}
-                  dangerouslySetInnerHTML={{ 
-                    __html: convertMarkdownToHtml(responses.find(r => r.language === selectedLanguage)?.response || 'No response available.')
-                  }}
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-                  Last updated: {responses.find(r => r.language === selectedLanguage)?.lastUpdated.toLocaleString() || 'Never'}
-                </Typography>
-              </Box>
-            )}
+            <Typography 
+              variant="h6" 
+              sx={{
+                fontSize: isMobile ? '0.9rem' : '1rem',
+                color: 'primary.main',
+                textTransform: 'uppercase',
+                borderBottom: '2px solid',
+                borderColor: 'primary.main',
+                pb: 1,
+                mb: 2,
+                fontFamily: theme.typography.fontFamily,
+                letterSpacing: '0.02857em',
+                lineHeight: 1.75
+              }}
+            >
+              Highly requested features under consideration or development
+            </Typography>
+            {renderFeatureContent()}
           </Box>
         ) : (
-          <Typography variant="body1" color="text.secondary">
+          <Typography 
+            variant="body1" 
+            color="text.secondary"
+            sx={{
+              fontSize: isMobile ? '0.9rem' : '1rem'
+            }}
+          >
             Select a programming language to see its features and best practices.
           </Typography>
         )}
