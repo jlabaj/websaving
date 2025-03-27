@@ -5,16 +5,20 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   IconButton,
-  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button,
   Box,
-  Button
+  Typography
 } from '@mui/material';
-import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { Delete as DeleteIcon, Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from '../types';
-import { AddLinkDialog } from './AddLinkDialog';
 
 interface LinkListProps {
   categoryId: string;
@@ -23,6 +27,9 @@ interface LinkListProps {
 export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
   const [links, setLinks] = useState<Link[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [newLink, setNewLink] = useState({ title: '', url: '' });
+  const [editingLink, setEditingLink] = useState<Link | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -35,11 +42,7 @@ export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
     if (!user) return;
     
     const linksRef = collection(db, 'links');
-    const q = query(
-      linksRef,
-      where('userId', '==', user.uid),
-      where('categoryId', '==', categoryId)
-    );
+    const q = query(linksRef, where('categoryId', '==', categoryId));
     const querySnapshot = await getDocs(q);
     
     const linksList = querySnapshot.docs.map(doc => ({
@@ -50,6 +53,41 @@ export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
     setLinks(linksList);
   };
 
+  const handleAddLink = async () => {
+    if (!user || !newLink.title.trim() || !newLink.url.trim()) return;
+
+    try {
+      await addDoc(collection(db, 'links'), {
+        title: newLink.title.trim(),
+        url: newLink.url.trim(),
+        categoryId,
+        userId: user.uid,
+        createdAt: new Date()
+      });
+      setNewLink({ title: '', url: '' });
+      setOpenDialog(false);
+      fetchLinks();
+    } catch (error) {
+      console.error('Error adding link:', error);
+    }
+  };
+
+  const handleEditLink = async () => {
+    if (!editingLink || !editingLink.title.trim() || !editingLink.url.trim()) return;
+
+    try {
+      await updateDoc(doc(db, 'links', editingLink.id), {
+        title: editingLink.title.trim(),
+        url: editingLink.url.trim()
+      });
+      setOpenEditDialog(false);
+      setEditingLink(null);
+      fetchLinks();
+    } catch (error) {
+      console.error('Error updating link:', error);
+    }
+  };
+
   const handleDeleteLink = async (linkId: string) => {
     try {
       await deleteDoc(doc(db, 'links', linkId));
@@ -57,6 +95,11 @@ export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
     } catch (error) {
       console.error('Error deleting link:', error);
     }
+  };
+
+  const handleEditClick = (link: Link) => {
+    setEditingLink(link);
+    setOpenEditDialog(true);
   };
 
   return (
@@ -76,14 +119,26 @@ export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
         {links.map((link) => (
           <ListItem key={link.id}>
             <ListItemText
-              primary={link.title}
-              secondary={
-                <a href={link.url} target="_blank" rel="noopener noreferrer">
-                  {link.url}
+              primary={
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  {link.title}
                 </a>
               }
             />
             <ListItemSecondaryAction>
+              <IconButton
+                edge="end"
+                aria-label="edit"
+                onClick={() => handleEditClick(link)}
+                sx={{ mr: 1 }}
+              >
+                <EditIcon />
+              </IconButton>
               <IconButton
                 edge="end"
                 aria-label="delete"
@@ -96,12 +151,59 @@ export const LinkList: React.FC<LinkListProps> = ({ categoryId }) => {
         ))}
       </List>
 
-      <AddLinkDialog
-        open={openDialog}
-        onClose={() => setOpenDialog(false)}
-        categoryId={categoryId}
-        onLinkAdded={fetchLinks}
-      />
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+        <DialogTitle>Add New Link</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Title"
+            fullWidth
+            value={newLink.title}
+            onChange={(e) => setNewLink(prev => ({ ...prev, title: e.target.value }))}
+          />
+          <TextField
+            margin="dense"
+            label="URL"
+            fullWidth
+            value={newLink.url}
+            onChange={(e) => setNewLink(prev => ({ ...prev, url: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button onClick={handleAddLink} variant="contained">
+            Add
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)}>
+        <DialogTitle>Edit Link</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Title"
+            fullWidth
+            value={editingLink?.title || ''}
+            onChange={(e) => setEditingLink(prev => prev ? { ...prev, title: e.target.value } : null)}
+          />
+          <TextField
+            margin="dense"
+            label="URL"
+            fullWidth
+            value={editingLink?.url || ''}
+            onChange={(e) => setEditingLink(prev => prev ? { ...prev, url: e.target.value } : null)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
+          <Button onClick={handleEditLink} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }; 

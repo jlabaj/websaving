@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   List,
   ListItemButton,
@@ -15,19 +16,20 @@ import {
   Button,
   Divider
 } from '@mui/material';
-import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { Delete as DeleteIcon, Add as AddIcon, Edit as EditIcon, Check as CheckIcon, Close as CloseIcon } from '@mui/icons-material';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Category } from '../types';
-import { LinkList } from './LinkList';
 
 export const CategoryList: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (user) {
@@ -54,40 +56,63 @@ export const CategoryList: React.FC = () => {
     if (!user || !newCategoryName.trim()) return;
 
     try {
-      const docRef = await addDoc(collection(db, 'categories'), {
+      await addDoc(collection(db, 'categories'), {
         name: newCategoryName.trim(),
         userId: user.uid,
         createdAt: new Date()
       });
-
-      const newCategory: Category = {
-        id: docRef.id,
-        name: newCategoryName.trim(),
-        userId: user.uid,
-        createdAt: new Date()
-      };
-
-      setCategories([...categories, newCategory]);
       setNewCategoryName('');
       setOpenDialog(false);
+      fetchCategories();
     } catch (error) {
       console.error('Error adding category:', error);
     }
   };
 
+  const handleEditStart = (category: Category) => {
+    setEditingCategoryId(category.id);
+    setEditingName(category.name);
+  };
+
+  const handleEditSave = async () => {
+    if (!editingCategoryId || !editingName.trim()) return;
+
+    try {
+      await updateDoc(doc(db, 'categories', editingCategoryId), {
+        name: editingName.trim()
+      });
+      setEditingCategoryId(null);
+      setEditingName('');
+      fetchCategories();
+    } catch (error) {
+      console.error('Error updating category:', error);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingCategoryId(null);
+    setEditingName('');
+  };
+
   const handleDeleteCategory = async (categoryId: string) => {
     try {
       await deleteDoc(doc(db, 'categories', categoryId));
-      setCategories(categories.filter(cat => cat.id !== categoryId));
+      setCategories(categories.filter(category => category.id !== categoryId));
     } catch (error) {
       console.error('Error deleting category:', error);
+    }
+  };
+
+  const handleCategoryClick = (categoryId: string) => {
+    if (editingCategoryId !== categoryId) {
+      navigate(`/category/${categoryId}`);
     }
   };
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5">Categories</Typography>
+        <Typography variant="h6">Categories</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -101,25 +126,84 @@ export const CategoryList: React.FC = () => {
         {categories.map((category) => (
           <React.Fragment key={category.id}>
             <ListItemButton
-              selected={selectedCategory?.id === category.id}
-              onClick={() => setSelectedCategory(category)}
+              onClick={() => handleCategoryClick(category.id)}
+              sx={{
+                borderRadius: 1,
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
             >
-              <ListItemText primary={category.name} />
+              {editingCategoryId === category.id ? (
+                <TextField
+                  fullWidth
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  autoFocus
+                  size="small"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <ListItemText 
+                  primary={category.name}
+                  primaryTypographyProps={{
+                    sx: {
+                      fontSize: '1rem'
+                    }
+                  }}
+                />
+              )}
               <ListItemSecondaryAction>
+                {editingCategoryId === category.id ? (
+                  <>
+                    <IconButton
+                      edge="end"
+                      aria-label="save"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditSave();
+                      }}
+                      sx={{ mr: 1 }}
+                    >
+                      <CheckIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      aria-label="cancel"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditCancel();
+                      }}
+                      sx={{ mr: 1 }}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                  </>
+                ) : (
+                  <IconButton
+                    edge="end"
+                    aria-label="edit"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditStart(category);
+                    }}
+                    sx={{ mr: 1 }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                )}
                 <IconButton
                   edge="end"
                   aria-label="delete"
-                  onClick={() => handleDeleteCategory(category.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteCategory(category.id);
+                  }}
                 >
                   <DeleteIcon />
                 </IconButton>
               </ListItemSecondaryAction>
             </ListItemButton>
-            {selectedCategory?.id === category.id && (
-              <Box sx={{ pl: 4, pr: 2 }}>
-                <LinkList categoryId={category.id} />
-              </Box>
-            )}
             <Divider />
           </React.Fragment>
         ))}
