@@ -1,5 +1,6 @@
 {
   "name": "websaving",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@module-federation/vite": "^1.2.6",
     "@types/jest": "^27.5.2",
     "@types/node": "^22.13.13",
     "@types/react": "^19.0.12",

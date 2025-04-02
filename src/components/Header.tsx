@@ -17,7 +17,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ showBackButton = false, title = 'Web Link Saver' }) => {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, signIn } = useAuth();
 
   return (
     <AppBar position="static">
@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({ showBackButton = false, title = 
             Sign Out
           </Button>
         ) : (
-          <Button color="inherit" onClick={() => navigate('/')}>
+          <Button color="inherit" onClick={signIn}>
             Sign In with Google
           </Button>
         )}

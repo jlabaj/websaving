@@ -6,7 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { MainContent } from './components/MainContent';
 import { CategoryPage } from './pages/CategoryPage';
 
-function App() {
+export default () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -21,5 +21,3 @@ function App() {
     </ThemeProvider>
   );
 }
-
-export default App; 
