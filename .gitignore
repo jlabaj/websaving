@@ -54,4 +54,3 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-src/firebase.ts
